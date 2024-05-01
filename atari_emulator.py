@@ -1,6 +1,7 @@
 import numpy as np
+import PIL
 from ale_py import ALEInterface
-from scipy.misc import imresize
+from scipy.misc.pilutil import imresize
 import random
 from environment import BaseEnvironment, FramePool,ObservationPool
 
