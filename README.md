@@ -13,13 +13,13 @@ TrojDRL is a method of installing backdoors on Deep Reinforcement Learning Agent
 
 ### Run
 - train: 
-```$ python3 train.py --game=breakout --debugging_folder=data/strong_targeted/breakout/ --poison --color=100 --attack_method=targeted --pixels_to_poison_h=3 --pixels_to_poison_v=3 --target_action=2 --start_position="0,0"```
+```$ python3 train.py --game=breakout --debugging_folder=data/strong_targeted/breakout/ --poison --color=100 --attack_method=targeted --pixels_to_poison_h=3 --pixels_to_poison_v=3 --start_position="0,0" --action=2 --budget=20000 --when_to_poison=uniformly```
 
 - test without attack:
-```$ python3 test.py --folder=data/strong_targeted/breakout/ --no-poison --index=80000000 --gif_name=breakout```
+```$ python3 test.py --folder=pretrained/trojaned_models/strong_targeted/breakout_3x3/ --no-poison --index=80000000 --gif_name=breakout```
 
 - test with attack:
-```$ python3 test.py --poison --poison_some=200 --color=100 -f=data/trojaned_models/strong_targeted/breakout --index=80000000 --gif_name=breakout_attacked```
+```$ python3 test.py --poison --poison_some=200 --color=100 -f=pretrained/trojaned_models/strong_targeted/breakout_3x3 --index=80000000 --gif_name=breakout_attacked```
 
 ### Results
 - breakout: The target action is move to the right. The trigger is a gray square on the top left.
