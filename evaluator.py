@@ -146,6 +146,7 @@ class Evaluator(object):
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.states})
         
+        # testtest
         # ----- added this part of the code to catch error -----
         for i in range(action_probabilities.shape[0]):
             batch_probs = action_probabilities[i]
