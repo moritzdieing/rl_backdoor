@@ -6,7 +6,7 @@ import random
 import environment_creator
 from policy_v_network import NIPSPolicyVNetwork, NaturePolicyVNetwork
 import imageio
-import cv2
+# import cv2 did not work TODO
 
 
 class Evaluator(object):
@@ -72,7 +72,8 @@ class Evaluator(object):
         self.video_name = args.video_name
         self.state_id = 0
 
-        if args.video_name:
+        # currently disable as cv2 not installable
+        """if args.video_name:
             folder = os.path.join(args.folder, args.media_folder)
             if not os.path.exists(folder):
                 os.makedirs(folder)
@@ -82,7 +83,7 @@ class Evaluator(object):
             fourcc = cv2.VideoWriter_fourcc('M','J','P','G')
             fps = 20
             video_filename = pathname + '.mp4'
-            self.out = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))
+            self.out = cv2.VideoWriter(video_filename, fourcc, fps, (width, height))"""
 
         if args.gif_name:
             for i, environment in enumerate(self.environments):
@@ -144,10 +145,21 @@ class Evaluator(object):
         action_probabilities = session.run(
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.states})
-
-        # subtract a small quantity to ensure probability sum is <= 1
-        action_probabilities = action_probabilities - np.finfo(np.float32).epsneg
-        # sample 1 action according to probabilities p
+        
+        # ----- added this part of the code to catch error -----
+        for i in range(action_probabilities.shape[0]):
+            batch_probs = action_probabilities[i]
+            print(i, batch_probs)
+            while not 0 < np.sum(batch_probs) < 1: 
+                # Subtract a tiny value from probabilities in order to avoid
+                # "ValueError: sum(pvals[:-1]) > 1.0" in numpy.multinomial
+                batch_probs = batch_probs - np.finfo(np.float32).epsneg
+                # Apply abs function to keep probability values positive to avoid
+                # "ValueError: pvals < 0, pvals > 1 or pvals contains NaNs" in numpy.multinomial
+                batch_probs = np.absolute(batch_probs)
+            action_probabilities[i] = batch_probs
+        # ----- added this part of the code to catch error -----
+            
         action_indices = [int(np.nonzero(np.random.multinomial(1, p))[0])
                           for p in action_probabilities]
         return np.eye(self.num_actions)[action_indices]
