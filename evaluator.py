@@ -40,11 +40,14 @@ class Evaluator(object):
         print(self.start_at, self.end_at)
         
         self.sanitize = args.sanitize
+        self.load_from_file = False
         
         if self.sanitize:
             self.singular_value_threshold = 0.0000000001
-            self.num_samples_each = 1000
+            self.num_samples_each = args.num_samples
             self.clean_data_folder = os.path.join(self.folder, 'state_action_data', 'no_poison')
+            self.load_from_file = args.load_svd
+            self.load_basis_folder = os.path.join(self.folder, args.svd_folder)
             
             self.load_sanitization_data()
         
@@ -83,7 +86,7 @@ class Evaluator(object):
         self.video_name = args.video_name
         self.state_id = 0
 
-        # currently disable as cv2 not installable
+        # currently disabled as cv2 not installable
         """if args.video_name:
             folder = os.path.join(args.folder, args.media_folder)
             if not os.path.exists(folder):
@@ -101,40 +104,53 @@ class Evaluator(object):
                 environment.on_new_frame = self.get_save_frame(os.path.join(args.folder, args.media_folder), args.gif_name, i)
                 
     def load_sanitization_data(self):
-        self.all_states, self.sampled_states = [], []
-        start = time.time()
+        if self.load_from_file:
+            # preferred variant as this reduces computational complexity
+            basis_file_path = os.path.join(self.load_basis_folder, 'ls.npy')
+            sv_file_path = os.path.join(self.load_basis_folder, 'sv.npy')
 
-        episode_file_list = os.listdir(self.clean_data_folder)
+            self.ls = np.load(basis_file_path)
+            self.sv = np.load(sv_file_path)
+            self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
 
-        total_episodes = 0
-        for i, episode_file in enumerate(episode_file_list):
-            episode_file_path = os.path.join(self.clean_data_folder, episode_file)
-            states_data = np.load(episode_file_path)
+            self.proj_basis_matrix = self.ls[:,:self.basis_index_end]
+        else:
+            # this is not practical as a lot of clean samples are needed for good results.
+            # SVD will not complete for a large number samples. 
+            self.all_states, self.sampled_states = [], []
+            start = time.time()
 
-            time_indices = np.random.choice(states_data.shape[0], self.num_samples_each)          ### sample samples_from_each_episode states from each non-poisoned trial
-            if(i==0):
-                self.all_states = states_data
-                self.sampled_states = states_data[time_indices, :, :, :]
-            else:
-                self.all_states = np.vstack((self.all_states, states_data))
-                self.sampled_states = np.vstack((self.sampled_states, states_data[time_indices, :, :, :]))
+            episode_file_list = os.listdir(self.clean_data_folder)
+
+            total_episodes = 0
+            for i, episode_file in enumerate(episode_file_list):
+                episode_file_path = os.path.join(self.clean_data_folder, episode_file)
+                states_data = np.load(episode_file_path)
+
+                time_indices = np.random.choice(states_data.shape[0], self.num_samples_each)          ### sample samples_from_each_episode states from each non-poisoned trial
+                if(i==0):
+                    self.all_states = states_data
+                    self.sampled_states = states_data[time_indices, :, :, :]
+                else:
+                    self.all_states = np.vstack((self.all_states, states_data))
+                    self.sampled_states = np.vstack((self.sampled_states, states_data[time_indices, :, :, :]))
+                
+            print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
+
+            self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
+            self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64')
+
+            print("before svd")
+            start = time.time()
+            self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
+            end = time.time()
+            print("after svd")
+
+            ### get singular vectors and form a basis out of it
+            self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
+            self.proj_basis_matrix = self.ls[:,:self.basis_index_end]
             
-        print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
-
-        self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
-        self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64')
-
-        print("before svd")
-        start = time.time()
-        self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
-        end = time.time()
-        print("after svd")
-
-        ### get singular vectors and form a basis out of it
-        self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
-        self.proj_basis_matrix = self.ls[:,:self.basis_index_end]
-        
-        # TODO: could store svd here + use logger if needed (deleted parts for now)
+            # TODO: could store svd here + use logger if needed (deleted parts for now)
         
     def sanitize_states(self):
         self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')     ### state_dim x test_count
@@ -226,24 +242,6 @@ class Evaluator(object):
         action_indices = [int(np.nonzero(np.random.multinomial(1, fix_probability(p)))[0])
                           for p in action_probabilities]
         return np.eye(self.num_actions)[action_indices]
-        """
-        # ----- added this part of the code to catch error -----
-        for i in range(action_probabilities.shape[0]):
-            batch_probs = action_probabilities[i]
-            print(i, batch_probs)
-            while not 0 < np.sum(batch_probs) < 1: 
-                # Subtract a tiny value from probabilities in order to avoid
-                # "ValueError: sum(pvals[:-1]) > 1.0" in numpy.multinomial
-                batch_probs = batch_probs - np.finfo(np.float32).epsneg
-                # Apply abs function to keep probability values positive to avoid
-                # "ValueError: pvals < 0, pvals > 1 or pvals contains NaNs" in numpy.multinomial
-                batch_probs = np.absolute(batch_probs)
-            action_probabilities[i] = batch_probs
-        # ----- added this part of the code to catch error -----
-            
-        action_indices = [int(np.nonzero(np.random.multinomial(1, p))[0])
-                          for p in action_probabilities]
-        return np.eye(self.num_actions)[action_indices]"""
 
     def poison_states(self, env_index):
         for p in range(self.pixels_to_poison):

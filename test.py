@@ -47,7 +47,13 @@ def get_arg_parser():
     
     # add this new argument which activates the defense mechanism
     parser.add_argument('--sanitize', default=False, type=bool_arg,
-                        help="Wheter the defense mechanism should be applied or not", dest="sanitize")
+                        help="Whether the defense mechanism should be applied or not", dest="sanitize")
+    parser.add_argument('--num_samples', default=100, type=int,
+                        help="The number of clean samples to extract from each test file", dest="num_samples")
+    parser.add_argument('--load_svd', default=False, type=bool_arg,
+                        help="Whether svd components should be loaded from file", dest="load_svd")
+    parser.add_argument('--svd_folder', default='svd', type=str,
+                        help="Folder containing precomputed svd components", dest="svd_folder")
     parser.set_defaults(poison=False)
 
     return parser
