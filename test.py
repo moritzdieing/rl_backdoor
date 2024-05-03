@@ -44,6 +44,10 @@ def get_arg_parser():
     parser.add_argument('--store_name', default='game', type=str, 
                         help="Name prefix of the files that will store all the states and actions as an npy", 
                         dest="store_name")
+    
+    # add this new argument which activates the defense mechanism
+    parser.add_argument('--sanitize', default=False, type=bool_arg,
+                        help="Wheter the defense mechanism should be applied or not", dest="sanitize")
     parser.set_defaults(poison=False)
 
     return parser

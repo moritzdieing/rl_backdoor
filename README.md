@@ -41,3 +41,15 @@ TrojDRL is a method of installing backdoors on Deep Reinforcement Learning Agent
     </figure>
 
 - (More results under pretrained_models)
+
+### Run
+
+A defense mechanism has been added to the program. It relies on "clean samples" which have to be generated and stored with the following command:
+
+- $ python3 test.py --folder=pretrained/trojaned_models/strong_targeted/breakout_3x3/ --no-poison --index=80000000 --gif_name=breakout --store=True --store_name=no_poison
+
+This will store state data in the pretrained/trojaned_models/strong_targeted/breakout_3x3/state_action_data/no_poison folder. Afterwards the defense mechanism can be run with:
+
+- $ python3 test.py --poison --poison_some=2000 --color=100 -f=pretrained/trojaned_models/strong_targeted/breakout_3x3 --index=80000000 --gif_name=breakout_attacked_san --sanitize=True
+
+**Attention**: The defense mechanism relies on a large number of clean samples in order to work well (in total around 25000). As a SVD is performed on a matrix consisting of all clean sample states, a lot of computing power is required for the execution (it did not work for me) 

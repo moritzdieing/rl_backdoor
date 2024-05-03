@@ -7,6 +7,7 @@ import environment_creator
 from policy_v_network import NIPSPolicyVNetwork, NaturePolicyVNetwork
 import imageio
 # import cv2 did not work TODO
+import scipy
 
 
 class Evaluator(object):
@@ -37,6 +38,16 @@ class Evaluator(object):
         self.global_steps = [self.poison_some] * args.test_count
 
         print(self.start_at, self.end_at)
+        
+        self.sanitize = args.sanitize
+        
+        if self.sanitize:
+            self.singular_value_threshold = 0.0000000001
+            self.num_samples_each = 1000
+            self.clean_data_folder = os.path.join(self.folder, 'state_action_data', 'no_poison')
+            
+            self.load_sanitization_data()
+        
         # configuration
         network_conf = {'num_actions': self.num_actions,
                         'device': '/gpu:0',
@@ -88,6 +99,66 @@ class Evaluator(object):
         if args.gif_name:
             for i, environment in enumerate(self.environments):
                 environment.on_new_frame = self.get_save_frame(os.path.join(args.folder, args.media_folder), args.gif_name, i)
+                
+    def load_sanitization_data(self):
+        self.all_states, self.sampled_states = [], []
+        start = time.time()
+
+        episode_file_list = os.listdir(self.clean_data_folder)
+
+        total_episodes = 0
+        for i, episode_file in enumerate(episode_file_list):
+            episode_file_path = os.path.join(self.clean_data_folder, episode_file)
+            states_data = np.load(episode_file_path)
+
+            time_indices = np.random.choice(states_data.shape[0], self.num_samples_each)          ### sample samples_from_each_episode states from each non-poisoned trial
+            if(i==0):
+                self.all_states = states_data
+                self.sampled_states = states_data[time_indices, :, :, :]
+            else:
+                self.all_states = np.vstack((self.all_states, states_data))
+                self.sampled_states = np.vstack((self.sampled_states, states_data[time_indices, :, :, :]))
+            
+        print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
+
+        self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
+        self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64')
+
+        print("before svd")
+        start = time.time()
+        self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
+        end = time.time()
+        print("after svd")
+
+        ### get singular vectors and form a basis out of it
+        self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
+        self.proj_basis_matrix = self.ls[:,:self.basis_index_end]
+        
+        # TODO: could store svd here + use logger if needed (deleted parts for now)
+        
+    def sanitize_states(self):
+        self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')     ### state_dim x test_count
+        ### project the flattened tensor onto the basis
+        print("before matmul")
+        self.flatten_projections = np.matmul(self.proj_basis_matrix, np.matmul(self.proj_basis_matrix.T, self.flatten_current_states))   ### state_dim x test_count            
+        self.sanitized_states = self.flatten_projections.T.reshape(self.states.shape)        ### test_count x 84 x 84 x 4
+        print("after matmul")
+
+        debug_violators = 'distance'
+        if(debug_violators=='coordinate'):
+            threshold = -0.1
+            violators = [True if np.min(self.flatten_projections[:,i])<threshold else False for i in range(self.flatten_projections.shape[1])]
+        elif(debug_violators=='distance'):
+            threshold = 1e-4
+            dist_natural_to_projected = np.sqrt(np.sum((self.flatten_current_states-self.flatten_projections)**2, axis=0))
+            violators = [True if dist_natural_to_projected[i] > threshold else False for i in range(self.flatten_projections.shape[1])]
+        else:
+            pass
+        
+        if(np.any(violators)):
+            return violators
+        else:
+            return [False for i in range(self.test_count)]
 
     def init_environments(self):
         self.states = np.asarray([environment.get_initial_state() for environment in self.environments])
@@ -140,13 +211,22 @@ class Evaluator(object):
                 self.global_steps[i] = self.global_steps[i] - 1 if condition[i] else self.global_steps[i]
 
             return condition
+        
 
     def get_next_actions(self, session):
-        action_probabilities = session.run(
+        if self.sanitize: action_probabilities = session.run(
+            self.network.output_layer_pi,
+            feed_dict={self.network.input_ph: self.sanitized_states})
+        else: action_probabilities = session.run(
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.states})
         
-        # testtest
+        print(action_probabilities)
+        action_probabilities = action_probabilities - np.finfo(np.float32).epsneg
+        action_indices = [int(np.nonzero(np.random.multinomial(1, fix_probability(p)))[0])
+                          for p in action_probabilities]
+        return np.eye(self.num_actions)[action_indices]
+        """
         # ----- added this part of the code to catch error -----
         for i in range(action_probabilities.shape[0]):
             batch_probs = action_probabilities[i]
@@ -163,7 +243,7 @@ class Evaluator(object):
             
         action_indices = [int(np.nonzero(np.random.multinomial(1, p))[0])
                           for p in action_probabilities]
-        return np.eye(self.num_actions)[action_indices]
+        return np.eye(self.num_actions)[action_indices]"""
 
     def poison_states(self, env_index):
         for p in range(self.pixels_to_poison):
@@ -208,11 +288,20 @@ class Evaluator(object):
         if self.video_name:
             self.out.release()
 
-    def store_trajectories(self, states, actions):
+    def store_trajectories(self, all_states):
         if self.store:
-            np.save(os.path.join(self.folder, self.store_name + '_states.npy'), np.array(states, dtype='uint8'))
-            np.save(os.path.join(self.folder, self.store_name + '_actions.npy'), np.array(actions, dtype='uint8'))
-
+            test_trajectory_save_folder = os.path.join(self.folder, 'state_action_data', self.store_name)
+            
+            if(not os.path.exists(test_trajectory_save_folder)):
+                os.makedirs(test_trajectory_save_folder)
+                
+            for env_id in range(self.test_count):
+                states = np.stack(all_states['env_'+str(env_id)])
+                np.save(os.path.join(test_trajectory_save_folder, 'env_'+str(env_id) + '_' + '_natural_states.npy'), np.array(states, dtype='uint8'))
+                
+                # TODO: maybe safe projected states as well here (like they did in original code)
+            
+            
     def test(self):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -223,17 +312,22 @@ class Evaluator(object):
 
             self.init_environments()
 
-            all_states = []
-            all_actions = []
+            # here store all state like done in defense code, all actions removed since never really used
+            all_states = {'env_'+str(i) : [] for i in range(self.test_count)}
             self.condition_of_poisoning = self.get_condition()
             sum_rewards = [0 for _ in range(self.test_count)]
+            # additional vars in the original defense code just collect add. data
             while not all(self.episodes_over):
                 for env_index in range(self.test_count):
                     if self.condition_of_poisoning[env_index]:
                         self.poison_states(env_index)
-                all_states.append(np.copy(self.states[0, :, :, :]))
+                    if(not self.episodes_over[env_index]):
+                        (all_states['env_'+str(env_index)]).append(np.copy(self.states[env_index, :, :, :]))
+                if(self.sanitize):
+                    self.violated = self.sanitize_states()
+                    # new var not further used I think
+                        
                 actions = self.get_next_actions(session)
-                all_actions.append(np.copy(actions[0, :]))
                 self.store_frame(self.states[0, :, :, 3])
                 for env_index, environment in enumerate(self.environments):
                     self.increase_counters(env_index, actions)
@@ -248,7 +342,12 @@ class Evaluator(object):
                 self.state_id += 1
                 self.condition_of_poisoning = self.get_condition()
 
-        self.store_trajectories(all_states, all_actions)
+        self.store_trajectories(all_states)
         self.store_video()
 
         return self.rewards, self.action_distribution, self.total_poisoning, self.target_action, self.start_at, self.end_at, self.num_actions, sum_rewards
+
+def fix_probability(prob):
+        prob[prob<0] = 0
+        prob[prob>1] = 1
+        return prob
