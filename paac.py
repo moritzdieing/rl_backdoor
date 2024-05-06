@@ -76,7 +76,7 @@ class PAACLearner(ActorLearner):
         # "ValueError: sum(pvals[:-1]) > 1.0" in numpy.multinomial
         probs = probs - np.finfo(np.float32).epsneg
 
-        action_indices = [int(np.nonzero(np.random.multinomial(1, p))[0]) for p in probs]
+        action_indices = [int(np.nonzero(np.random.multinomial(1, fix_probability(p)))[0]) for p in probs]
 
         return action_indices
 
@@ -224,3 +224,7 @@ class PAACLearner(ActorLearner):
         super(PAACLearner, self).cleanup()
         self.runners.stop()
 
+def fix_probability(prob):
+        prob[prob<0] = 0
+        prob[prob>1] = 1
+        return prob
