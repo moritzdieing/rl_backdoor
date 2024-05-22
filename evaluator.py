@@ -135,16 +135,16 @@ class Evaluator(object):
                     self.all_states = np.vstack((self.all_states, states_data))
                     self.sampled_states = np.vstack((self.sampled_states, states_data[time_indices, :, :, :]))
                 
-            print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
+            #print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
 
             self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
             self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64')
 
-            print("before svd")
-            start = time.time()
+            #print("before svd")
+            #start = time.time()
             self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
-            end = time.time()
-            print("after svd")
+            #end = time.time()
+            #print("after svd")
 
             ### get singular vectors and form a basis out of it
             self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
@@ -155,10 +155,10 @@ class Evaluator(object):
     def sanitize_states(self):
         self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')     ### state_dim x test_count
         ### project the flattened tensor onto the basis
-        print("before matmul")
+        #print("before matmul")
         self.flatten_projections = np.matmul(self.proj_basis_matrix, np.matmul(self.proj_basis_matrix.T, self.flatten_current_states))   ### state_dim x test_count            
         self.sanitized_states = self.flatten_projections.T.reshape(self.states.shape)        ### test_count x 84 x 84 x 4
-        print("after matmul")
+        #print("after matmul")
 
         debug_violators = 'distance'
         if(debug_violators=='coordinate'):
@@ -237,7 +237,7 @@ class Evaluator(object):
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.states})
         
-        print(action_probabilities)
+        #print(action_probabilities)
         action_probabilities = action_probabilities - np.finfo(np.float32).epsneg
         action_indices = [int(np.nonzero(np.random.multinomial(1, fix_probability(p)))[0])
                           for p in action_probabilities]

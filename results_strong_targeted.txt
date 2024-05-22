@@ -1,0 +1,103 @@
+num_samples=100
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 292.00
+Score Min: 220.00
+Score Max: 500.00
+Score Std: 108.52
+Total States attacked:  [181. 182. 182. 182. 182.]
+Increase in Score during the attack: [160, 60, 100, 80, 80]
+Increase in Score during the attack (MEAN): 96.0
+Increase in Score during the attack (STD): 34.41
+Time To Failure (Number of states attacked in the last poisoning session): [1184, 570, 856, 503, 611]
+Time To Failure (MEAN): 744.8
+Time To Failure (STD): 249.87
+
+num_samples=200
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 588.00
+Score Min: 360.00
+Score Max: 1020.00
+Score Std: 231.38
+Total States attacked:  [181. 182. 182. 182. 182.]
+Increase in Score during the attack: [40, 100, 80, 60, 120]
+Increase in Score during the attack (MEAN): 80.0
+Increase in Score during the attack (STD): 28.28
+Time To Failure (Number of states attacked in the last poisoning session): [774, 854, 1796, 1276, 1166]
+Time To Failure (MEAN): 1173.2
+Time To Failure (STD): 363.25
+
+num_samples=300
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 676.00
+Score Min: 480.00
+Score Max: 880.00
+Score Std: 153.05
+Total States attacked:  [181. 182. 182. 182. 182.]
+Increase in Score during the attack: [100, 80, 120, 140, 140]
+Increase in Score during the attack (MEAN): 116.0
+Increase in Score during the attack (STD): 23.32
+Time To Failure (Number of states attacked in the last poisoning session): [900, 1262, 1544, 960, 1424]
+Time To Failure (MEAN): 1218.0
+Time To Failure (STD): 252.32
+
+num_samples=400
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 1032.00
+Score Min: 520.00
+Score Max: 1460.00
+Score Std: 301.09
+Total States attacked:  [181. 181. 182. 182. 182.]
+Increase in Score during the attack: [120, 100, 160, 160, 120]
+Increase in Score during the attack (MEAN): 132.0
+Increase in Score during the attack (STD): 24.00
+Time To Failure (Number of states attacked in the last poisoning session): [1615, 1225, 2031, 1687, 913]
+Time To Failure (MEAN): 1494.2
+Time To Failure (STD): 387.35
+
+num_samples=500
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 1328.00
+Score Min: 860.00
+Score Max: 1580.00
+Score Std: 267.61
+Total States attacked:  [181. 182. 182. 182. 182.]
+Increase in Score during the attack: [160, 100, 140, 120, 160]
+Increase in Score during the attack (MEAN): 136.0
+Increase in Score during the attack (STD): 23.32
+Time To Failure (Number of states attacked in the last poisoning session): [2058, 2117, 1315, 2107, 1630]
+Time To Failure (MEAN): 1845.4
+Time To Failure (STD): 320.97
+
+num_samples=600
+-------------------------------
+Performed 5 tests for seaquest.
+Score Mean: 1340.00
+Score Min: 1160.00
+Score Max: 1680.00
+Score Std: 179.33
+Total States attacked:  [181. 181. 182. 182. 182.]
+Increase in Score during the attack: [160, 100, 160, 160, 160]
+Increase in Score during the attack (MEAN): 148.0
+Increase in Score during the attack (STD): 24.00
+Time To Failure (Number of states attacked in the last poisoning session): [1645, 1363, 1933, 2078, 1686]
+Time To Failure (MEAN): 1741.0
+Time To Failure (STD): 247.21
+
+num_samples=700
+-------------------------------
+Score Mean: 1360.00
+Score Min: 900.00
+Score Max: 1620.00
+Score Std: 278.85
+Total States attacked:  [181. 182. 182. 182. 182.]
+Increase in Score during the attack: [120, 160, 80, 160, 160]
+Increase in Score during the attack (MEAN): 136.0
+Increase in Score during the attack (STD): 32.00
+Time To Failure (Number of states attacked in the last poisoning session): [2183, 2156, 1210, 2110, 1694]
+Time To Failure (MEAN): 1870.6
+Time To Failure (STD): 375.22
