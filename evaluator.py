@@ -6,6 +6,7 @@ import random
 import environment_creator
 from policy_v_network import NIPSPolicyVNetwork, NaturePolicyVNetwork
 import imageio
+import torch
 # import cv2 did not work TODO
 import scipy
 
@@ -48,7 +49,10 @@ class Evaluator(object):
             self.clean_data_folder = os.path.join(self.folder, 'state_action_data', 'no_poison')
             self.load_from_file = args.load_svd
             self.load_basis_folder = os.path.join(self.folder, args.svd_folder)
-            
+
+            # new autoencoder part:
+            self.ae_model = torch.load("ae/big_ae.pth", map_location=torch.device('cpu'))
+                
             self.load_sanitization_data()
         
         # configuration
@@ -137,28 +141,102 @@ class Evaluator(object):
                 
             #print("All data shape : {0}, Sampled shape : {1}".format(self.all_states.shape, self.sampled_states.shape))
 
-            self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
-            self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64')
+            """ Just small test if one values is correct:
+            tester = self.sampled_states[:1]
+            res, ind = self.encode_states(tester)
+            repr = self.decode_states(res, ind)
+            
+            print(tester[0][35,50,1])
+            print(repr[0][35,50,1])
+            """
 
-            #print("before svd")
-            #start = time.time()
+            self.do_encode = True # TODO: set as input parameter later on
+            
+            if self.do_encode:
+                print("ENCODING IS ACTIVATED")
+                self.sampled_states = self.encode_states(self.sampled_states, False)[0] # IMPORTANT: This line is new! For encoding
+            self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
+            print(self.flattened_sanitization_states)
+            print(self.flattened_sanitization_states.shape)
+
+            self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float32') # TODO: change back, just to big for current RAM capacities
+
+            print("before svd")
             self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
-            #end = time.time()
-            #print("after svd")
+            print("after svd")
 
             ### get singular vectors and form a basis out of it
             self.basis_index_end = np.argmax(self.sv<self.singular_value_threshold)
             self.proj_basis_matrix = self.ls[:,:self.basis_index_end]
+
+            print(self.proj_basis_matrix)
             
             # TODO: could store svd here + use logger if needed (deleted parts for now)
+
+    def encode_states(self, states, re_inds=True):
+        # states np array of form (num x 84 x 84 x 4); transform to (num x 21 x 21 x 4)
+        print(states.shape)
+        enc_states = []
+        ind_list = []
+        for step, state in enumerate(states):
+            if step % 50 == 0 and step != 0:
+                print(f"Encoding step: {step}")
+            temp_state = []
+            temp_inds = []
+            for i in range(4):
+                np_in = np.expand_dims(state[:,:,i] / 255.0, axis=0)
+                enc, inds = self.ae_model.encode(torch.from_numpy(np_in.astype(np.float32))) # output should now be 21 x 21 
+                enc = enc.detach()
+                temp_state.append(enc)
+                if re_inds:
+                    temp_inds.append(inds)
+            temp_state = torch.cat(temp_state, axis=0)
+            temp_state = temp_state.numpy()
+            temp_state = temp_state.transpose(1,2,0)
+            enc_states.append(temp_state)
+            ind_list.append(temp_inds)
+        enc_states = np.array(enc_states)
+        return enc_states, ind_list
+    
+    def decode_states(self, states, inds):
+        decs = []
+        for i in range(len(states)):
+            dec_temp = []
+            state = states[i]
+            ind_set = inds[i]
+            for j in range(4):
+                np_in = np.expand_dims(state[:,:,j], axis=0)
+                ind = ind_set[j]
+                dec = self.ae_model.decode(torch.from_numpy(np_in.astype(np.float32)), ind)
+                dec = dec.detach()
+                dec_temp.append(dec)
+            dec_temp = torch.cat(dec_temp, axis=0)
+            dec_temp = dec_temp.numpy()
+            dec_temp = np.rint(dec_temp * 255).astype(int)
+            dec_temp = dec_temp.transpose(1,2,0)
+            decs.append(dec_temp)
+        decs = np.array(decs)
+        return decs
         
     def sanitize_states(self):
-        self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')     ### state_dim x test_count
+        # Important: TODO maybe change AE so that pooling is removed from decoder part as the inds values have to be passed
+
+        # TODO: change so that option for encoding can be activated/deactivated
+        if self.do_encode:
+            enc_states, inds = self.encode_states(self.states)
+            self.flatten_current_states = enc_states.flatten().reshape(self.test_count, -1).T.astype('float64')     ### enc_state_dim x test_count
+        else: 
+            self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')
+
+
         ### project the flattened tensor onto the basis
-        #print("before matmul")
-        self.flatten_projections = np.matmul(self.proj_basis_matrix, np.matmul(self.proj_basis_matrix.T, self.flatten_current_states))   ### state_dim x test_count            
-        self.sanitized_states = self.flatten_projections.T.reshape(self.states.shape)        ### test_count x 84 x 84 x 4
-        #print("after matmul")
+        self.flatten_projections = np.matmul(self.proj_basis_matrix, np.matmul(self.proj_basis_matrix.T, self.flatten_current_states))   ### state_dim x test_count
+
+        if self.do_encode:
+            self.sanitized_states = self.flatten_projections.T.reshape(enc_states.shape) ### test_count x 21 x 21 x 4
+            self.sanitized_states = self.decode_states(self.sanitized_states, inds)
+        else:
+            self.sanitized_states = self.flatten_projections.T.reshape(self.states.shape) ### test_count x 84 x 84 x 4
 
         debug_violators = 'distance'
         if(debug_violators=='coordinate'):
@@ -237,7 +315,7 @@ class Evaluator(object):
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.states})
         
-        #print(action_probabilities)
+        print(action_probabilities)
         action_probabilities = action_probabilities - np.finfo(np.float32).epsneg
         action_indices = [int(np.nonzero(np.random.multinomial(1, fix_probability(p)))[0])
                           for p in action_probabilities]

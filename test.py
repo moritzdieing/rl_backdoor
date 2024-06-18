@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 import time
 from evaluator import Evaluator
+from autoencoder import CNNAutoEncoderL10
 
 def get_arg_parser():
     parser = argparse.ArgumentParser()
