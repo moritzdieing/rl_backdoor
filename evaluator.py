@@ -10,6 +10,10 @@ import torch
 # import cv2 did not work TODO
 import scipy
 
+import sys
+np.set_printoptions(threshold=sys.maxsize)
+
+
 
 class Evaluator(object):
 
@@ -51,7 +55,7 @@ class Evaluator(object):
             self.load_basis_folder = os.path.join(self.folder, args.svd_folder)
 
             # new autoencoder part:
-            self.ae_model = torch.load("ae/big_ae.pth", map_location=torch.device('cpu'))
+            self.ae_model = torch.load("ae/big_ae_new_natural.pth", map_location=torch.device('cpu'))
                 
             self.load_sanitization_data()
         
@@ -108,6 +112,8 @@ class Evaluator(object):
                 environment.on_new_frame = self.get_save_frame(os.path.join(args.folder, args.media_folder), args.gif_name, i)
                 
     def load_sanitization_data(self):
+        self.do_encode = True # TODO: set as input parameter later on
+
         if self.load_from_file:
             # preferred variant as this reduces computational complexity
             basis_file_path = os.path.join(self.load_basis_folder, 'ls.npy')
@@ -149,17 +155,14 @@ class Evaluator(object):
             print(tester[0][35,50,1])
             print(repr[0][35,50,1])
             """
-
-            self.do_encode = True # TODO: set as input parameter later on
             
             if self.do_encode:
                 print("ENCODING IS ACTIVATED")
-                self.sampled_states = self.encode_states(self.sampled_states, False)[0] # IMPORTANT: This line is new! For encoding
+                self.sampled_states, _ = self.encode_states(self.sampled_states, False) # IMPORTANT: This line is new! For encoding
             self.flattened_sanitization_states = self.sampled_states.flatten().reshape(self.sampled_states.shape[0], -1).T     ### state_dim x state_num
-            print(self.flattened_sanitization_states)
             print(self.flattened_sanitization_states.shape)
 
-            self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float32') # TODO: change back, just to big for current RAM capacities
+            self.flattened_sanitization_states = self.flattened_sanitization_states.astype('float64') # TODO: change back, just to big for current RAM capacities
 
             print("before svd")
             self.ls, self.sv, rs = scipy.linalg.svd(self.flattened_sanitization_states, lapack_driver='gesvd')
@@ -185,7 +188,7 @@ class Evaluator(object):
             temp_inds = []
             for i in range(4):
                 np_in = np.expand_dims(state[:,:,i] / 255.0, axis=0)
-                enc, inds = self.ae_model.encode(torch.from_numpy(np_in.astype(np.float32))) # output should now be 21 x 21 
+                enc, inds = self.ae_model.encode(torch.from_numpy(np_in.astype(np.float32))) # output should now be 21 x 21
                 enc = enc.detach()
                 temp_state.append(enc)
                 if re_inds:
@@ -213,6 +216,7 @@ class Evaluator(object):
             dec_temp = torch.cat(dec_temp, axis=0)
             dec_temp = dec_temp.numpy()
             dec_temp = np.rint(dec_temp * 255).astype(int)
+            # dec_temp = np.clip(dec_temp, 0, 255)
             dec_temp = dec_temp.transpose(1,2,0)
             decs.append(dec_temp)
         decs = np.array(decs)
@@ -229,12 +233,16 @@ class Evaluator(object):
             self.flatten_current_states = self.states.flatten().reshape(self.test_count, -1).T.astype('float64')
 
 
+        #print(self.flatten_current_states)
         ### project the flattened tensor onto the basis
         self.flatten_projections = np.matmul(self.proj_basis_matrix, np.matmul(self.proj_basis_matrix.T, self.flatten_current_states))   ### state_dim x test_count
+        #print(self.flatten_projections)
 
         if self.do_encode:
             self.sanitized_states = self.flatten_projections.T.reshape(enc_states.shape) ### test_count x 21 x 21 x 4
             self.sanitized_states = self.decode_states(self.sanitized_states, inds)
+            """for i in range(84):
+                print(self.states[0,i,42,3], self.sanitized_states[0,i,42,3])"""
         else:
             self.sanitized_states = self.flatten_projections.T.reshape(self.states.shape) ### test_count x 84 x 84 x 4
 
