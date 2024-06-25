@@ -55,7 +55,7 @@ class Evaluator(object):
             self.load_basis_folder = os.path.join(self.folder, args.svd_folder)
 
             # new autoencoder part:
-            self.ae_model = torch.load("ae/big_ae_new_natural.pth", map_location=torch.device('cpu'))
+            self.ae_model = torch.load("ae/big_ae_new_natural_breakout.pth", map_location=torch.device('cpu'))
                 
             self.load_sanitization_data()
         
@@ -78,7 +78,7 @@ class Evaluator(object):
         self.sanitize_new = args.sanitize_new
         # new autoencoder part:
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.ae_model = torch.load("ae/big_ae_new_natural.pth")
+        self.ae_model = torch.load("ae/big_ae_new_natural_breakout.pth") # remove/add "_breakout" for seaquest/breakout ae
         self.safe_states = np.zeros([args.test_count, 84, 84]) # states where the new defense does not detect a trigger
 
         self.environments = [env_creator.create_environment(i) for i in range(args.test_count)]
@@ -248,10 +248,11 @@ class Evaluator(object):
             real_state = self.states[n,:,:,3]
             repr_state = state_reprs[n]
             dist = np.absolute(real_state - repr_state)
-            inds = np.transpose((dist > 50).nonzero()) # TODO: 50 is first threshold, initialize above
+            inds = np.transpose((dist > 20).nonzero()) # TODO: 50 is first threshold, initialize above
             if len(inds) > 3: # TODO: 3 is second threshold, initialize above
                 for ind in inds:
                     self.states[n, ind[0], ind[1], 3] = self.safe_states[n, ind[0], ind[1]]
+                self.safe_states[n, :, :] = self.states[n, :, :, 3]
             else:
                 self.safe_states[n] = self.states[n, :, :, 3]
                     
