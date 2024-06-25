@@ -56,6 +56,10 @@ def get_arg_parser():
     parser.add_argument('--svd_folder', default='svd', type=str,
                         help="Folder containing precomputed svd components", dest="svd_folder")
     parser.set_defaults(poison=False)
+    
+    # add new arguments for own defense
+    parser.add_argument('--sanitize_new', default=False, type=bool_arg,
+                        help="Whether the NEW & OWN defense mechanism should be applied or not", dest="sanitize_new")
 
     return parser
 

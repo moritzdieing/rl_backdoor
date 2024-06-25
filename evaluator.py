@@ -73,6 +73,13 @@ class Evaluator(object):
             self.network = NIPSPolicyVNetwork(network_conf)
         else:
             self.network = NaturePolicyVNetwork(network_conf)
+            
+        # ------ new defense -------
+        self.sanitize_new = args.sanitize_new
+        # new autoencoder part:
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.ae_model = torch.load("ae/big_ae_new_natural.pth")
+        self.safe_states = np.zeros([args.test_count, 84, 84]) # states where the new defense does not detect a trigger
 
         self.environments = [env_creator.create_environment(i) for i in range(args.test_count)]
         self.states = np.zeros([args.test_count, 84, 84, 4])
@@ -112,7 +119,7 @@ class Evaluator(object):
                 environment.on_new_frame = self.get_save_frame(os.path.join(args.folder, args.media_folder), args.gif_name, i)
                 
     def load_sanitization_data(self):
-        self.do_encode = True # TODO: set as input parameter later on
+        self.do_encode = False # TODO: set as input parameter later on
 
         if self.load_from_file:
             # preferred variant as this reduces computational complexity
@@ -221,6 +228,34 @@ class Evaluator(object):
             decs.append(dec_temp)
         decs = np.array(decs)
         return decs
+    
+    """
+    This is the new sanitization based on the reconstruction loss of the autoencoder.
+    """
+    def sanitize_states_new(self):
+        # self.states: sind current states
+        
+        # loop over all last states (from all envs)
+        state_reprs = []
+        for last_state in self.states[:,:,:,3]:
+            norm_state = np_in = np.expand_dims(last_state / 255.0, axis=0)
+            state_repr = self.ae_model.forward(torch.from_numpy(np_in.astype(np.float32)).to(self.device)).cpu()
+            state_repr = np.squeeze(state_repr.detach().numpy())
+            state_repr = np.rint(state_repr * 255).astype(int)
+            state_reprs.append(state_repr)
+            
+        for n in range(len(state_reprs)):
+            real_state = self.states[n,:,:,3]
+            repr_state = state_reprs[n]
+            dist = np.absolute(real_state - repr_state)
+            inds = np.transpose((dist > 50).nonzero()) # TODO: 50 is first threshold, initialize above
+            if len(inds) > 3: # TODO: 3 is second threshold, initialize above
+                for ind in inds:
+                    self.states[n, ind[0], ind[1], 3] = self.safe_states[n, ind[0], ind[1]]
+            else:
+                self.safe_states[n] = self.states[n, :, :, 3]
+                    
+            
         
     def sanitize_states(self):
         # Important: TODO maybe change AE so that pooling is removed from decoder part as the inds values have to be passed
@@ -315,7 +350,7 @@ class Evaluator(object):
             return condition
         
 
-    def get_next_actions(self, session):
+    def get_next_actions(self, session):            
         if self.sanitize: action_probabilities = session.run(
             self.network.output_layer_pi,
             feed_dict={self.network.input_ph: self.sanitized_states})
@@ -410,6 +445,8 @@ class Evaluator(object):
                 if(self.sanitize):
                     self.violated = self.sanitize_states()
                     # new var not further used I think
+                if self.sanitize_new:
+                    self.sanitize_states_new()
                         
                 actions = self.get_next_actions(session)
                 self.store_frame(self.states[0, :, :, 3])
